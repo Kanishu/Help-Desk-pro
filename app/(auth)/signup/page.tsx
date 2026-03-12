@@ -23,13 +23,40 @@ export default function SignupPage() {
     e.preventDefault()
     setLoading(true)
 
-    // 1. Sign up the user
+    // 1. Create the organization first
+    // We generate the UUID explicitly and do not return data, because unauthenticated users
+    // are strictly blocked by RLS policies from SELECTING the newly inserted organization.
+    const orgId = crypto.randomUUID()
+    const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Math.random().toString(36).substring(2, 6)
+    
+    const { error: orgError } = await supabase
+      .from('organizations')
+      .insert({ id: orgId, name: orgName, slug })
+      // Notice: NO .select() here!
+
+    if (orgError) {
+      toast.error('Failed to create organization: ' + orgError.message)
+      setLoading(false)
+      return
+    }
+
+    // 2. Sign up the user (with metadata to trigger profile creation safely via Postgres auth triggers)
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          full_name: fullName,
+          role: 'admin',
+          organization_id: orgId,
+        }
+      }
     })
 
     if (authError) {
+      // If user creation fails, delete the created org to avoid floating orgs
+      await supabase.from('organizations').delete().eq('id', orgId)
+      
       toast.error(authError.message)
       setLoading(false)
       return
@@ -41,36 +68,7 @@ export default function SignupPage() {
       return
     }
 
-    // 2. Create the organization
-    const { data: orgData, error: orgError } = await supabase
-      .from('organizations')
-      .insert({ name: orgName })
-      .select('id')
-      .single()
-
-    if (orgError) {
-      toast.error('Failed to create organization: ' + orgError.message)
-      setLoading(false)
-      return
-    }
-
-    // 3. Update the user profile linked to the org
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({
-        organization_id: orgData.id,
-        full_name: fullName,
-        role: 'admin', // First user is admin
-      })
-      .eq('id', authData.user.id)
-
-    if (profileError) {
-      toast.error('Failed to create user profile: ' + profileError.message)
-      setLoading(false)
-      return
-    }
-
-    toast.success('Account created successfully! Please log in.')
+    toast.success('Account created! Please check your email to verify your account.')
     router.push('/login')
   }
 
