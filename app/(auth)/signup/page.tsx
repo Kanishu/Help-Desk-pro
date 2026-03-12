@@ -54,16 +54,15 @@ export default function SignupPage() {
       return
     }
 
-    // 3. Create the user profile linked to the org
+    // 3. Update the user profile linked to the org
     const { error: profileError } = await supabase
-      .from('users')
-      .insert({
-        id: authData.user.id,
+      .from('profiles')
+      .update({
         organization_id: orgData.id,
-        email: email,
         full_name: fullName,
-        role: 'ADMIN', // First user is admin
+        role: 'admin', // First user is admin
       })
+      .eq('id', authData.user.id)
 
     if (profileError) {
       toast.error('Failed to create user profile: ' + profileError.message)

@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { type Ticket, type TicketStatus, type TicketPriority } from '@/lib/types';
+import { createClient } from '@/lib/supabase/client';
 
 interface TicketContextType {
     tickets: Ticket[];
@@ -24,6 +25,7 @@ export function TicketProvider({ children }: { children: React.ReactNode }) {
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const supabase = createClient();
 
     const fetchTickets = useCallback(async () => {
         try {
@@ -46,7 +48,21 @@ export function TicketProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         fetchTickets();
-    }, [fetchTickets]);
+
+        const channel = supabase.channel('public:tickets')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'tickets' },
+                () => {
+                    fetchTickets();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [fetchTickets, supabase]);
 
     const addTicket = async (data: {
         subject: string;

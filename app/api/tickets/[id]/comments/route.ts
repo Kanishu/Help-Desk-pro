@@ -15,7 +15,7 @@ export async function GET(
         }
 
         const { data, error } = await supabase
-            .from('comments')
+            .from('ticket_comments')
             .select('*')
             .eq('ticket_id', id)
             .order('created_at', { ascending: true });
@@ -45,15 +45,26 @@ export async function POST(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const { data: userData } = await supabase
+            .from('profiles')
+            .select('organization_id')
+            .eq('id', user.id)
+            .single();
+
+        if (!userData?.organization_id) {
+            return NextResponse.json({ error: 'User does not belong to an organization' }, { status: 403 });
+        }
+
         const insertData: Record<string, any> = {
             ticket_id: id,
-            user_id: user.id,
-            body: body.content,
+            organization_id: userData.organization_id,
+            author_id: user.id,
+            content: body.content,
             is_internal: body.is_internal || false,
         };
 
         const { data, error } = await supabase
-            .from('comments')
+            .from('ticket_comments')
             .insert(insertData)
             .select()
             .single();

@@ -49,7 +49,7 @@ const priorityConfig: Record<TicketPriority, { color: string; bgClass: string; l
 
 interface Comment {
   id: string;
-  body: string;
+  content: string;
   is_internal: boolean;
   is_system?: boolean;
   attachments?: { name: string; type: string; size: number }[];
@@ -57,6 +57,7 @@ interface Comment {
 }
 
 import { useTickets } from '@/context/TicketContext';
+import { createClient } from '@/lib/supabase/client';
 
 export function TicketDetail({ ticket, isOpen, onClose }: TicketDetailProps) {
   const { updateTicketStatus } = useTickets();
@@ -71,16 +72,37 @@ export function TicketDetail({ ticket, isOpen, onClose }: TicketDetailProps) {
 
   // Load comments when ticket opens
   useEffect(() => {
+    let channel: any;
+
     if (ticket && isOpen) {
-      setLoadingComments(true);
-      fetch(`/api/tickets/${ticket.id}/comments`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) setComments(data);
-          setLoadingComments(false);
-        })
-        .catch(() => setLoadingComments(false));
+      const fetchComments = () => {
+        setLoadingComments(true);
+        fetch(`/api/tickets/${ticket.id}/comments`)
+          .then(res => res.json())
+          .then(data => {
+            if (Array.isArray(data)) setComments(data);
+            setLoadingComments(false);
+          })
+          .catch(() => setLoadingComments(false));
+      };
+      
+      fetchComments();
+
+      const supabase = createClient();
+      channel = supabase.channel(`ticket_comments-${ticket.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${ticket.id}` },
+          () => fetchComments()
+        )
+        .subscribe();
     }
+
+    return () => {
+      if (channel) {
+        createClient().removeChannel(channel);
+      }
+    };
   }, [ticket?.id, isOpen]);
 
   if (!ticket) return null;
@@ -380,7 +402,7 @@ export function TicketDetail({ ticket, isOpen, onClose }: TicketDetailProps) {
                                 {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
                               </span>
                             </div>
-                            <p className="text-foreground/90 text-sm whitespace-pre-wrap">{comment.body}</p>
+                            <p className="text-foreground/90 text-sm whitespace-pre-wrap">{comment.content}</p>
                             {/* Show attachments */}
                             {comment.attachments && comment.attachments.length > 0 && (
                               <div className="flex flex-wrap gap-2 mt-2">

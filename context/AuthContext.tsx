@@ -30,7 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (authUser) {
                 // Fetch user profile to get full name
                 const { data: profile } = await supabase
-                    .from('users')
+                    .from('profiles')
                     .select('full_name')
                     .eq('id', authUser.id)
                     .single();
